@@ -31,7 +31,7 @@ def get_instance_ip(instance, client, option): #pra funcionar, não podem ter ou
                     return str(ip)
 
     elif option=='id':
-        for inst in reservations['Reservations']:
+        for instance in reservations['Reservations']:
             for subinst in instance['Instances']:
                 if subinst['State']['Name']=='running':
                     ip=subinst['InstanceId']
@@ -163,4 +163,4 @@ create_instance_with_db()
 time.sleep(60)
 create_instance_with_django()
 time.sleep(60)
-create_AMI('IMG',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1) 
+create_AMI('IMG_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1) 
