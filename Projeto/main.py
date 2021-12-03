@@ -146,12 +146,20 @@ def create_instance_with_django():
     print('django instance created\n')
 
 
-def create_AMI(name, id, reg):
+def create_AMI(name, ids, reg):
+    print('id django within ami creation: {}\n'.format(ids))
     instance = reg.create_image(
       Name=name,
       NoReboot=False,
-      InstanceId=id
+      InstanceId=ids
     )
+    print("AMI created\n")
+
+def terminate_instance(ids, client):
+    print('id django within ami creation: {}\n'.format(ids))
+    idkill = ['{}'.format(ids)]
+    client.terminate_instances(InstanceIds=idkill)
+    print("Instance destroyed\n")
     
 
 
@@ -162,5 +170,6 @@ def create_AMI(name, id, reg):
 create_instance_with_db()
 time.sleep(60)
 create_instance_with_django()
-time.sleep(60)
-create_AMI('AMI_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1) 
+#time.sleep(60)
+#create_AMI('AMI_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
+#terminate_instance(get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)

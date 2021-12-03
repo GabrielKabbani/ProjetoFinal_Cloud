@@ -12,6 +12,3 @@ sudo sed -i 's/node1/ip_django/g' ./portfolio/settings.py
 ./install.sh
 sudo ufw allow 8080/tcp
 sudo reboot
-
-
-
