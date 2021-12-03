@@ -2,6 +2,7 @@
 
 import boto3
 import time
+import os
 
 #CRIANDO FUNÇÕES:
 
@@ -9,16 +10,18 @@ def create_key_pair(region, name):
     ec2_client = boto3.client("ec2", region_name=region)
     key_pair = ec2_client.create_key_pair(KeyName=name)
     private_key = key_pair["KeyMaterial"]
-    with os.fdopen(os.open("aws_ec2_key_{0}.pem".format(name), os.O_WRONLY | os.O_CREAT, 0o400), "w+") as handle:
+    with os.fdopen(os.open("../../keys_projeto/aws_ec2_key_{0}.pem".format(name), os.O_WRONLY | os.O_CREAT, 0o400), "w+") as handle:
         handle.write(private_key)
     return name
 
 #já foram criadas, nao precisa mais rodar:
-#KP_NV = create_key_pair("us-east-1", "us-east-1-KP") 
-#KP_OH = create_key_pair("us-east-2", "us-east-2-KP") 
+# KP_NV = create_key_pair("us-east-1", "us-east-1-KP") 
+# KP_OH = create_key_pair("us-east-2", "us-east-2-KP") 
 
 ec2_client_2 = boto3.client("ec2", region_name="us-east-2")
 ec2_client_1 = boto3.client("ec2", region_name="us-east-1")
+ec2LoadBalancer = boto3.client('elbv2', region_name="us-east-1")
+ec2AutoScalling = boto3.client('autoscaling', region_name="us-east-1")
 
 def get_instance_ip(instance, client, option): #pra funcionar, não podem ter outras instancias com o mesmo nome rodando
     reservations = client.describe_instances(Filters=[{'Name': 'tag:Name', 'Values': [instance]}])
@@ -104,7 +107,7 @@ def create_instance_with_db():
 
 def create_instance_with_django():
 
-    ip_post=str(get_instance_ip('KABBANI_WITH_DB_OK', ec2_client_2,'ip'))
+    ip_post=get_instance_ip('KABBANI_WITH_DB_OK', ec2_client_2,'ip')
     print('ip postgres within django command line: {}\n'.format(ip_post))
     replacements = {'ip_django': ip_post}
     with open('creating_django_from_cl.sh') as infile, open('creating_django_from_cl_ip.sh', 'w') as outfile:
@@ -164,11 +167,15 @@ def terminate_instance(ids, client):
 
 
 
+
+#listener?
+
+
 #EXECUTANDO EM ORDEM (sleeps são para ter tempo da máquina inicial rodar quando ela é referenciada por outra função)
 
 
 create_instance_with_db()
-time.sleep(60)
+time.sleep(200) #tempo elevado porque quando deixei menos, o funcionamento oscilava
 create_instance_with_django()
 #time.sleep(60)
 #create_AMI('AMI_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)

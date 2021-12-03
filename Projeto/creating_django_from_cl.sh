@@ -3,8 +3,8 @@ sudo su - ubuntu
 HOME="/home/ubuntu/"
 
 
-
 cd $HOME
+
 sudo apt update
 git clone https://github.com/raulikeda/tasks.git
 cd tasks
