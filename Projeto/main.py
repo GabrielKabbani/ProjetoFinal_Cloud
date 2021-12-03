@@ -98,6 +98,8 @@ def security_group_django():
     print("Django Security Group created \n")
     return res
 
+id_sg_django = str(security_group_django())
+
 def security_group_postgres():
     region = boto3.resource("ec2", region_name="us-east-2")
     sg = region.create_security_group(
@@ -196,7 +198,6 @@ def create_instance_with_db():
     print('postgres instance created\n')
 
 def create_instance_with_django():
-    scdj=str(security_group_django())
     ip_post=get_instance_ip('KABBANI_WITH_DB_OK', ec2_client_2,'ip')
     print('ip postgres within django command line: {}\n'.format(ip_post))
     replacements = {'ip_django': ip_post}
@@ -232,7 +233,7 @@ def create_instance_with_django():
             ]
             }
         ],
-        SecurityGroupIds=[scdj],
+        SecurityGroupIds=[id_sg_django],
         InstanceType="t2.micro",
         UserData = usrdata,
         KeyName = "us-east-1-KP"
@@ -248,6 +249,7 @@ def create_AMI(name, ids, reg):
       InstanceId=ids
     )
     print("AMI created\n")
+    return instance['ImageId']
 
 def terminate_instance(ids, client):
     print('id django within instance termination: {}\n'.format(ids))
@@ -258,7 +260,6 @@ def terminate_instance(ids, client):
 
 def target_group(): 
     describe = ec2_client_1.describe_vpcs()
-    print(describe['Vpcs'])
     res = describe["Vpcs"][0]["VpcId"] #ver qual ta entrando
     target_group = ec2LoadBalancer.create_target_group(
         Name="targetKABBANI",
@@ -304,34 +305,48 @@ def creating_load_balancer():
     
 
 
-def auto_scalling(tg):
+def auto_scalling(tg, imgid):
+    with open("creating_django_from_cl_ip.sh", "r") as f:
+        usrdata = f.read()
+
+    ec2AutoScalling.create_launch_configuration(
+                LaunchConfigurationName='confname',
+                ImageId=imgid,
+                SecurityGroups=[id_sg_django],
+                InstanceType='t2.micro', 
+                UserData = usrdata
+        )
+    
     regions =[]
     describe_regions= ec2_client_1.describe_availability_zones()
     for region in describe_regions["AvailabilityZones"]:
         regions.append(region["ZoneName"])
     ec2AutoScalling.create_auto_scaling_group(
         AutoScalingGroupName="asgKabbani",
-        LaunchConfigurationName="config8",
-        #COLOCARTAGDAIMAGEM(INSTANCEID)
+        LaunchConfigurationName="confname", 
         TargetGroupARNs=[tg],
         AvailabilityZones=regions,
         MinSize=1,
         MaxSize=3
     )
+
     print('AutoScalling created\n')
 
 
-def finalizing_load_balancer(tg):
+def finalizing_load_balancer(tg,lbr):
     ec2AutoScalling.attach_load_balancer_target_groups(
         TargetGroupARNs=[tg],
         AutoScalingGroupName='asgKabbani'
     )
+    ec2LoadBalancer.create_listener(
+      LoadBalancerArn=lbr,
+      DefaultActions=[{ 'Type': 'forward', 'TargetGroupArn': tg}],
+      Protocol='HTTP',
+      Port=80  
+    )
     print('LB done\n')
 
 
-
-
-#listener?
 
 
 #EXECUTANDO EM ORDEM (sleeps são para ter tempo da máquina inicial rodar quando ela é referenciada por outra função)
@@ -341,7 +356,7 @@ create_instance_with_db()
 time.sleep(200) #tempo elevado porque quando deixei menos, o funcionamento oscilava
 create_instance_with_django()
 time.sleep(60)
-create_AMI('AMI_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
+idami=create_AMI('AMI_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
 time.sleep(200)
 terminate_instance(get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
 time.sleep(200)
@@ -350,6 +365,6 @@ time.sleep(20)
 LB= creating_load_balancer()
 filteredLB = LB['LoadBalancers'][0]['LoadBalancerArn']
 time.sleep(20)
-auto_scalling(tg)
+auto_scalling(tg,idami)
 time.sleep(20)
-finalizing_load_balancer(tg)
+finalizing_load_balancer(tg,filteredLB)

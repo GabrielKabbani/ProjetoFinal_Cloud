@@ -6,9 +6,9 @@ HOME="/home/ubuntu/"
 cd $HOME
 
 sudo apt update
-git clone https://github.com/raulikeda/tasks.git
+git clone https://github.com/GabrielKabbani/tasks.git
 cd tasks
-sudo sed -i 's/node1/3.143.108.218/g' ./portfolio/settings.py
+sudo sed -i 's/node1/3.15.222.191/g' ./portfolio/settings.py
 ./install.sh
 sudo ufw allow 8080/tcp
 sudo reboot
