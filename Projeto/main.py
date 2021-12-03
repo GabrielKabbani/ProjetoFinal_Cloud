@@ -40,6 +40,94 @@ def get_instance_ip(instance, client, option): #pra funcionar, não podem ter ou
                     ip=subinst['InstanceId']
                     return str(ip)
 
+#security group functions:
+
+def security_group_lb():
+    region = boto3.resource("ec2", region_name="us-east-1")
+    sg = region.create_security_group(
+        GroupName='lbKabbani',
+        Description='load balancer SG'
+    )
+
+    sg.authorize_ingress(
+        CidrIp="0.0.0.0/0",
+        FromPort=80,
+        ToPort=80,
+        IpProtocol="tcp"
+    )
+
+    response = ec2_client_1.describe_security_groups(
+        Filters=[
+            dict(Name='group-name', Values=['lbKabbani'])
+    ])
+
+
+    res =  response['SecurityGroups'][0]['GroupId']
+    print("LB Security Group created \n")
+    return res
+
+
+def security_group_django():
+    region = boto3.resource("ec2", region_name="us-east-1")
+    sg = region.create_security_group(
+        GroupName='djangoKabbani',
+        Description='django SG'
+    )
+
+    sg.authorize_ingress(
+        CidrIp="0.0.0.0/0",
+        FromPort=8080,
+        ToPort=8080,
+        IpProtocol="tcp"
+    )
+
+    sg.authorize_ingress(
+        CidrIp="0.0.0.0/0",
+        FromPort=22,
+        ToPort=22,
+        IpProtocol="tcp"
+    )
+
+    response = ec2_client_1.describe_security_groups(
+        Filters=[
+            dict(Name='group-name', Values=['djangoKabbani'])
+    ])
+
+
+    res =  response['SecurityGroups'][0]['GroupId']
+    print("Django Security Group created \n")
+    return res
+
+def security_group_postgres():
+    region = boto3.resource("ec2", region_name="us-east-2")
+    sg = region.create_security_group(
+        GroupName='postKabbani',
+        Description='postgres SG'
+    )
+
+    sg.authorize_ingress(
+        CidrIp="0.0.0.0/0",
+        FromPort=5432,
+        ToPort=5432,
+        IpProtocol="tcp"
+    )
+
+    sg.authorize_ingress(
+        CidrIp="0.0.0.0/0",
+        FromPort=22,
+        ToPort=22,
+        IpProtocol="tcp"
+    )
+
+    response = ec2_client_2.describe_security_groups(
+        Filters=[
+            dict(Name='group-name', Values=['postKabbani'])
+    ])
+
+    res =  response['SecurityGroups'][0]['GroupId']
+    print("Postgres Security Group created \n")
+    return res
+
     
 
 
@@ -76,6 +164,7 @@ def create_instance():
 def create_instance_with_db():
     with open("creating_postgres_from_cl.sh", "r") as f:
       usrdata = f.read()
+    scdb=str(security_group_postgres())
     instances = ec2_client_2.run_instances(
         ImageId="ami-020db2c14939a8efb",
         MaxCount=1,
@@ -99,6 +188,7 @@ def create_instance_with_db():
             ]
             }
         ],
+        SecurityGroupIds=[scdb],
         InstanceType="t2.micro",
         UserData = usrdata,
         KeyName = "us-east-2-KP"
@@ -106,7 +196,7 @@ def create_instance_with_db():
     print('postgres instance created\n')
 
 def create_instance_with_django():
-
+    scdj=str(security_group_django())
     ip_post=get_instance_ip('KABBANI_WITH_DB_OK', ec2_client_2,'ip')
     print('ip postgres within django command line: {}\n'.format(ip_post))
     replacements = {'ip_django': ip_post}
@@ -142,6 +232,7 @@ def create_instance_with_django():
             ]
             }
         ],
+        SecurityGroupIds=[scdj],
         InstanceType="t2.micro",
         UserData = usrdata,
         KeyName = "us-east-1-KP"
@@ -159,11 +250,83 @@ def create_AMI(name, ids, reg):
     print("AMI created\n")
 
 def terminate_instance(ids, client):
-    print('id django within ami creation: {}\n'.format(ids))
+    print('id django within instance termination: {}\n'.format(ids))
     idkill = ['{}'.format(ids)]
     client.terminate_instances(InstanceIds=idkill)
     print("Instance destroyed\n")
+
+
+def target_group(): 
+    describe = ec2_client_1.describe_vpcs()
+    print(describe['Vpcs'])
+    res = describe["Vpcs"][0]["VpcId"] #ver qual ta entrando
+    target_group = ec2LoadBalancer.create_target_group(
+        Name="targetKABBANI",
+        Protocol="HTTP",
+        Port=8080,
+        HealthCheckEnabled=True,
+        HealthCheckProtocol='HTTP',
+        HealthCheckPort='8080',
+        HealthCheckPath='/admin/',
+        TargetType="instance",
+        VpcId=res,
+        Matcher={
+        'HttpCode': '200,302,301,404,403',
+        }
+    )
+    print('Target group created\n')
+    return target_group["TargetGroups"][0]["TargetGroupArn"]
+
+
+def creating_load_balancer(): 
+    sclb=str(security_group_lb())
+    des = ec2_client_1.describe_subnets()
+    subnets=[]
+    for subnet in des['Subnets']:
+        subnets.append(subnet['SubnetId'])
+    load_balancer = ec2LoadBalancer.create_load_balancer(
+        Name='lBkabbani',
+        SecurityGroups=[sclb],
+        Tags=[
+        {
+            'Key': 'SGLB',
+            'Value': 'lB'
+        }
+        ],
+        IpAddressType='ipv4',
+        Subnets=subnets
+    )
+
+
+    print('Load Balancer created\n')
+    return load_balancer
+
     
+
+
+def auto_scalling(tg):
+    regions =[]
+    describe_regions= ec2_client_1.describe_availability_zones()
+    for region in describe_regions["AvailabilityZones"]:
+        regions.append(region["ZoneName"])
+    ec2AutoScalling.create_auto_scaling_group(
+        AutoScalingGroupName="asgKabbani",
+        LaunchConfigurationName="config8",
+        #COLOCARTAGDAIMAGEM(INSTANCEID)
+        TargetGroupARNs=[tg],
+        AvailabilityZones=regions,
+        MinSize=1,
+        MaxSize=3
+    )
+    print('AutoScalling created\n')
+
+
+def finalizing_load_balancer(tg):
+    ec2AutoScalling.attach_load_balancer_target_groups(
+        TargetGroupARNs=[tg],
+        AutoScalingGroupName='asgKabbani'
+    )
+    print('LB done\n')
 
 
 
@@ -177,6 +340,16 @@ def terminate_instance(ids, client):
 create_instance_with_db()
 time.sleep(200) #tempo elevado porque quando deixei menos, o funcionamento oscilava
 create_instance_with_django()
-#time.sleep(60)
-#create_AMI('AMI_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
-#terminate_instance(get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
+time.sleep(60)
+create_AMI('AMI_KABBANI',get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
+time.sleep(200)
+terminate_instance(get_instance_ip('KABBANI_WITH_DJANGO_OK', ec2_client_1, 'id'), ec2_client_1)
+time.sleep(200)
+tg=target_group()
+time.sleep(20)
+LB= creating_load_balancer()
+filteredLB = LB['LoadBalancers'][0]['LoadBalancerArn']
+time.sleep(20)
+auto_scalling(tg)
+time.sleep(20)
+finalizing_load_balancer(tg)
